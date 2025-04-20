@@ -3,9 +3,8 @@ const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const cors = require('cors');
 const crypto = require('crypto');
-// const cheerio = require('cheerio');
-const chromium = require('chrome-aws-lambda');
-const puppeteer = require('puppeteer-core');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 
 const app = express();
@@ -150,34 +149,146 @@ app.post('/users/login', async (req, res) => {
 
 
 // Function to fetch and parse prayer timings from the source
+// at top of file, alongside your other requires
+// if you're on Node <18 uncomment the next line and run `npm install node-fetch`
+// const fetch = require('node‑fetch');
+
+const LATITUDE = 31.469532529069962;   // LUMS Mosque latitude
+const LONGITUDE = 74.40934493320935;   // LUMS Mosque longitude
+
 async function fetchPrayerTimingsFromSource() {
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    executablePath: await chromium.executablePath || null, 
-    headless: chromium.headless,
-  });
+  const { data: html } = await axios.get('https://lrs.lums.edu.pk/namazTimings.html');
   
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const date  = now.getDate();
 
-  const page = await browser.newPage();
-  await page.goto(PRAYER_SOURCE_URL, { waitUntil: 'networkidle2' });
+  let fajar = "", asar = "", isha = "";
 
-  const timings = await page.evaluate(() => {
-    const rows = document.querySelectorAll('.row.schedule-item');
-    const result = {};
-    rows.forEach(row => {
-      const prayer = row.querySelector('div:nth-child(1) time')?.textContent.trim();
-      const time = row.querySelector('div:nth-child(2) h4')?.textContent.trim();
-      if (prayer && time) result[prayer] = time;
-    });
-    return result;
+  switch (month) {
+    case 1:
+      if (date <= 15) {
+        fajar = "6:20am"; asar = "4:00pm"; isha = "7:15pm";
+      } else {
+        fajar = "6:20am"; asar = "4:15pm"; isha = "7:15pm";
+      }
+      break;
+    case 2:
+      if (date <= 15) {
+        fajar = "6:10am"; asar = "4:30pm"; isha = "7:30pm";
+      } else {
+        fajar = "6:00am"; asar = "4:45pm"; isha = "7:45pm";
+      }
+      break;
+    case 3:
+      if (date <= 15) {
+        fajar = "5:40am"; asar = "4:45pm"; isha = "8:00pm";
+      } else {
+        fajar = "5:20am"; asar = "5:00pm"; isha = "8:00pm";
+      }
+      break;
+    case 4:
+      if (date <= 15) {
+        fajar = "5:00am"; asar = "5:00pm"; isha = "8:15pm";
+      } else {
+        fajar = "4:40am"; asar = "5:15pm"; isha = "8:30pm";
+      }
+      break;
+    case 5:
+      if (date <= 15) {
+        fajar = "4:30am"; asar = "5:15pm"; isha = "8:45pm";
+      } else {
+        fajar = "4:20am"; asar = "5:15pm"; isha = "9:00pm";
+      }
+      break;
+    case 6:
+      fajar = "4:20am"; asar = "5:30pm"; isha = "9:15pm";
+      break;
+    case 7:
+      if (date <= 15) {
+        fajar = "4:30am"; asar = "5:30pm"; isha = "9:15pm";
+      } else {
+        fajar = "4:30am"; asar = "5:30pm"; isha = "9:00pm";
+      }
+      break;
+    case 8:
+      if (date <= 15) {
+        fajar = "4:40am"; asar = "5:15pm"; isha = "9:00pm";
+      } else {
+        fajar = "4:50am"; asar = "5:15pm"; isha = "8:30pm";
+      }
+      break;
+    case 9:
+      if (date <= 15) {
+        fajar = "5:00am"; asar = "5:00pm"; isha = "8:15pm";
+      } else {
+        fajar = "5:10am"; asar = "4:45pm"; isha = "7:45pm";
+      }
+      break;
+    case 10:
+      if (date <= 15) {
+        fajar = "5:20am"; asar = "4:30pm"; isha = "7:30pm";
+      } else {
+        fajar = "5:30am"; asar = "4:15pm"; isha = "7:15pm";
+      }
+      break;
+    case 11:
+      if (date <= 15) {
+        fajar = "5:40am"; asar = "4:00pm"; isha = "7:00pm";
+      } else {
+        fajar = "6:00am"; asar = "3:45pm"; isha = "7:00pm";
+      }
+      break;
+    case 12:
+      if (date <= 15) {
+        fajar = "6:10am"; asar = "3:45pm"; isha = "7:00pm";
+      } else {
+        fajar = "6:20am"; asar = "4:00pm"; isha = "7:00pm";
+      }
+      break;
+    default:
+      throw new Error(`Unexpected month: ${month}`);
+  }
+
+  // Fetch sunrise & sunset
+  const isoDate = now.toISOString().split("T")[0];
+  const url     = `https://api.sunrise-sunset.org/json?lat=${LATITUDE}&lng=${LONGITUDE}&date=${isoDate}&formatted=0`;
+  const resp    = await fetch(url);
+  const json    = await resp.json();
+
+  // convert and bump maghrib by 1 minute
+  const sunset = new Date(json.results.sunset);
+  sunset.setMinutes(sunset.getMinutes() + 1);
+  let maghrib = sunset.toLocaleTimeString("en-US", {
+    hour12: true,
+    hour:   "2-digit",
+    minute: "2-digit"
   });
 
-  await browser.close();
-  return timings;
+  let sunrise = new Date(json.results.sunrise).toLocaleTimeString("en-US", {
+    hour12: true,
+    hour:   "2-digit",
+    minute: "2-digit"
+  });
+  sunrise=sunrise.split(" ")[0]+sunrise.split(" ")[1].toLowerCase()
+  maghrib=maghrib.split(" ")[0]+maghrib.split(" ")[1].toLowerCase()
+  const jumma = "1:30pm"
+  const $ = cheerio.load(html);
+  let zuhr ;
+  $('.row.schedule-item').each((i, el) => {
+    const label = $(el).find('time').text().trim();
+    if (label === 'Zuhr') {
+      zuhr = $(el).find('.col-md-10 h4').text().trim();
+      return false; // stop loop early
+    }
+  });
+  // console.log($("time:contains('zuhr')").parent().find('h4').text())
+  return { fajar,zuhr, asar, isha, maghrib, sunrise, jumma };
 }
 
+
 app.get('/prayerTimings', async (req, res) => {
-  // await fetchPrayerTimingsFromSource()
+
   await connectToDb();
   const coll = db.collection(PRAYER_COLLECTION);
   let latest;
