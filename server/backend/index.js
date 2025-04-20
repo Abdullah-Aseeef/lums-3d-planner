@@ -5,7 +5,6 @@ const cors = require('cors');
 const crypto = require('crypto');
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer');
-import axios from 'axios';
 
 const app = express();
 app.use(cors());
