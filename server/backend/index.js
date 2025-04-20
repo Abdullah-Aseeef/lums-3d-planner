@@ -153,7 +153,6 @@ async function fetchPrayerTimingsFromSource() {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     await page.goto(PRAYER_SOURCE_URL, { waitUntil: 'networkidle2' });
-
     const timings = await page.evaluate(() => {
       const rows = document.querySelectorAll('.row.schedule-item');
       const result = {};
@@ -173,13 +172,18 @@ async function fetchPrayerTimingsFromSource() {
   // ...parse html to extract timings...
   // throw new Error('Parsing logic not implemented for HTML source');
 }
-
 app.get('/prayerTimings', async (req, res) => {
   // await fetchPrayerTimingsFromSource()
   await connectToDb();
   const coll = db.collection(PRAYER_COLLECTION);
+  let latest;
+  try{
+    latest = await coll.findOne({}, { sort: { updatedAt: -1 } });
+  }
+  catch(error){
+    console.log("error fetching db");
+  }
   try {
-    const latest = await coll.findOne({}, { sort: { updatedAt: -1 } });
     const now = Date.now();
     const oneDay = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
