@@ -3,12 +3,17 @@ const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const cors = require('cors');
 const crypto = require('crypto');
+const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
+import axios from 'axios';
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://LUMScape:diddyparty16!@lumscape.md59v.mongodb.net";
+const PRAYER_COLLECTION = 'prayerTimings';
+const PRAYER_SOURCE_URL = 'https://lrs.lums.edu.pk/namazTimings.html';
 
 const client = new MongoClient(MONGO_URI, {
   useNewUrlParser: true,
@@ -140,6 +145,68 @@ app.post('/users/login', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+
+
+// Function to fetch and parse prayer timings from the source
+async function fetchPrayerTimingsFromSource() {
+  
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(PRAYER_SOURCE_URL, { waitUntil: 'networkidle2' });
+
+    const timings = await page.evaluate(() => {
+      const rows = document.querySelectorAll('.row.schedule-item');
+      const result = {};
+      rows.forEach(row => {
+        const prayer = row.querySelector('div:nth-child(1) time')?.textContent.trim();
+        const time = row.querySelector('div:nth-child(2) h4')?.textContent.trim();
+        if (prayer && time) result[prayer] = time;
+      });
+      return result;
+    });
+
+    // console.log(timings);
+    browser.close();
+    return timings
+  
+
+  // ...parse html to extract timings...
+  // throw new Error('Parsing logic not implemented for HTML source');
+}
+
+app.get('/prayerTimings', async (req, res) => {
+  // await fetchPrayerTimingsFromSource()
+  await connectToDb();
+  const coll = db.collection(PRAYER_COLLECTION);
+  try {
+    const latest = await coll.findOne({}, { sort: { updatedAt: -1 } });
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000; // 1 day in milliseconds
+
+    if (latest && now - latest.updatedAt < oneDay) {
+      // Return cached data
+      return res.json(latest.timings);
+    }
+
+    // Fetch fresh data
+    const timings = await fetchPrayerTimingsFromSource();
+
+    // Update DB (clear old or upsert)
+    await coll.deleteMany({});
+    await coll.insertOne({ timings, updatedAt: now });
+
+    res.json(timings);
+  } catch (error) {
+    console.error('Error fetching prayer timings:', error);
+    // Fallback: if cache exists, return it
+    if (latest) {
+      return res.json(latest.timings);
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 module.exports = app;
