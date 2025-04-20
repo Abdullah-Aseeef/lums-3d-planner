@@ -182,6 +182,7 @@ app.get('/prayerTimings', async (req, res) => {
   }
   catch(error){
     console.log("error fetching db");
+    return res.err(501);
   }
   try {
     const now = Date.now();
