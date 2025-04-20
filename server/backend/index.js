@@ -3,8 +3,10 @@ const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const cors = require('cors');
 const crypto = require('crypto');
-const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
+// const cheerio = require('cheerio');
+const chromium = require('chrome-aws-lambda');
+const puppeteer = require('puppeteer-core');
+
 
 const app = express();
 app.use(cors());
@@ -149,29 +151,31 @@ app.post('/users/login', async (req, res) => {
 
 // Function to fetch and parse prayer timings from the source
 async function fetchPrayerTimingsFromSource() {
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath || null, 
+    headless: chromium.headless,
+  });
   
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    await page.goto(PRAYER_SOURCE_URL, { waitUntil: 'networkidle2' });
-    const timings = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.row.schedule-item');
-      const result = {};
-      rows.forEach(row => {
-        const prayer = row.querySelector('div:nth-child(1) time')?.textContent.trim();
-        const time = row.querySelector('div:nth-child(2) h4')?.textContent.trim();
-        if (prayer && time) result[prayer] = time;
-      });
-      return result;
+
+  const page = await browser.newPage();
+  await page.goto(PRAYER_SOURCE_URL, { waitUntil: 'networkidle2' });
+
+  const timings = await page.evaluate(() => {
+    const rows = document.querySelectorAll('.row.schedule-item');
+    const result = {};
+    rows.forEach(row => {
+      const prayer = row.querySelector('div:nth-child(1) time')?.textContent.trim();
+      const time = row.querySelector('div:nth-child(2) h4')?.textContent.trim();
+      if (prayer && time) result[prayer] = time;
     });
+    return result;
+  });
 
-    // console.log(timings);
-    browser.close();
-    return timings
-  
-
-  // ...parse html to extract timings...
-  // throw new Error('Parsing logic not implemented for HTML source');
+  await browser.close();
+  return timings;
 }
+
 app.get('/prayerTimings', async (req, res) => {
   // await fetchPrayerTimingsFromSource()
   await connectToDb();
