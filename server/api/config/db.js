@@ -9,6 +9,7 @@ const client = new MongoClient(mongoUri, {
 let db;
 async function connect() {
   if (!db) {
+    console.log('🔗 Connecting to Mongo at', mongoUri);
     await client.connect();
     db = client.db('LUMScapeDB');
     console.log('✅ MongoDB connected');
