@@ -102,23 +102,21 @@ module.exports.getTimings = async () => {
     const url     = `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&date=${isoDate}&formatted=0`;
     const resp    = await fetch(url);
     const json    = await resp.json();
-  
+    console.log(url)
     // convert and bump maghrib by 1 minute
-    const sunset = new Date(json.results.sunset);
-    sunset.setMinutes(sunset.getMinutes() + 1);
-    let maghrib = sunset.toLocaleTimeString("en-US", {
-      hour12: true,
-      hour:   "2-digit",
-      minute: "2-digit"
-    });
-  
-    let sunrise = new Date(json.results.sunrise).toLocaleTimeString("en-US", {
-      hour12: true,
-      hour:   "2-digit",
-      minute: "2-digit"
-    });
-    sunrise=sunrise.split(" ")[0]+sunrise.split(" ")[1].toLowerCase()
-    maghrib=maghrib.split(" ")[0]+maghrib.split(" ")[1].toLowerCase()
+    function formatFromUTCString(isoString, offsetHours = 0, addMinutes = 0) {
+      const utcMs   = Date.parse(isoString);
+      const localMs = utcMs + offsetHours * 3600e3 + addMinutes * 60e3;
+      const d       = new Date(localMs);
+      let h = d.getUTCHours();
+      let m = d.getUTCMinutes();
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12  = ((h + 11) % 12) + 1;
+      return `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+    }
+    const sunrise = formatFromUTCString(json.results.sunrise, 5);
+    const maghrib = formatFromUTCString(json.results.sunset, 5, 1);
+
     const jumma = "1:30pm"
     const $ = cheerio.load(html);
     let zuhr ;
